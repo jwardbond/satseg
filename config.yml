@@ -1,0 +1,32 @@
+ 
+# Mode settings
+mode: 0                   #(normal|2-stage fore|2-stage fore+back) == (0|1|2)
+
+# Device settings
+device: "cuda"            #(cuda|cpu)
+
+# Data settings
+in_dir: "./images/single/"
+out_dir: "./results/"
+save: False
+
+# ViT settings
+pretrained_weights: "./models/dino_deitsmall8_pretrain_full_checkpoint.pth"
+res: [280,280]            # resolution
+stride: 8                 # stride for extraction
+layer: 11                 # ViT layer for extraction
+facet: "key"              # facet for extraction (key|query|value)
+
+# Clustering settings
+cut: 0                    # cut functional: (NCut|Correlational Clustering) == (0|1)
+alpha: 3                  # k-sensitivity param [1,inf): the higher, the more clusters you get in correlational clustering 
+K: 2                      # number of clusters
+
+# GNN settings
+epochs: [10, 100, 10]     # modes [0,1,2]
+
+# Image processing settings
+cc: False                 # if K==2, choose the biggest component
+bs: False                 # bilateral solver
+log_bin: False            # log binning to extracted descriptors (smoother seg maps)
+
