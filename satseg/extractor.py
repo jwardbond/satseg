@@ -23,10 +23,10 @@ class ViTExtractor:
     We use the following notation in the documentation of the module's methods:
     B - batch size
     h - number of heads. usually takes place of the channel dimension in pytorch's convention BxCxHxW
-    p - patch size of the ViT. either 8 or 16.
-    t - number of tokens. equals the number of patches + 1, e.g. HW / p**2 + 1. Where H and W are the height and width
+    P - patch size of the ViT. either 8 or 16.
+    N - number of tokens. equals the number of patches + 1, e.g. HW / p**2 + 1. Where H and W are the height and width
     of the input image.
-    d - the embedding dimension in the ViT.
+    D - the embedding dimension in the ViT.
     """
 
     def __init__(
@@ -35,30 +35,32 @@ class ViTExtractor:
         stride: int = 4,
         model=None,
         device: str = "cuda",
-        model_dir: str = None,
+        model_dir: Path = None,
         head: str = "student",
     ):
         """
-        :param model_type: A string specifying the type of model to extract from.
-                          [dino_vits8 | dino_vits16 | dino_vitb8 | dino_vitb16 | vit_small_patch8_224 |
-                          vit_small_patch16_224 | vit_base_patch8_224 | vit_base_patch16_224]
-        :param stride: stride of first convolution layer. small stride -> higher resolution.
-        :param model: Optional parameter. The nn.Module to extract from instead of creating a new one in ViTExtractor.
-                      should be compatible with model_type.
+        Args:
+            model_type: A string specifying the type of model to extract from.
+                [dino_vits8 | dino_vits16 | dino_vitb8 | dino_vitb16 | vit_small_patch8_224 |
+                vit_small_patch16_224 | vit_base_patch8_224 | vit_base_patch16_224]
+            stride: stride of first convolution layer. small stride -> higher resolution.
+            model: Optional parameter. The nn.Module to extract from instead of creating a new one in ViTExtractor.
+                should be compatible with model_type. If model is provided, model_dir is ignored.
         """
         self.model_type = model_type
         self.device = device
 
         if model:
-            self.model = ViTExtractor.create_model(
-                model_type, model_dir, head, state_dict=model
-            )
+            self.model = ViTExtractor.create_model(model_type, head, state_dict=model)
         else:
-            self.model = ViTExtractor.create_model(model_type, model_dir, head)
+            self.model = ViTExtractor.create_model(
+                model_type, head, state_dict=model_dir
+            )
 
         self.model = ViTExtractor.patch_vit_resolution(self.model, stride=stride)
         self.model.eval()
         self.model.to(self.device)
+
         self.p = self.model.patch_embed.patch_size
         self.stride = self.model.patch_embed.proj.stride
 
@@ -75,36 +77,26 @@ class ViTExtractor:
         self.num_patches = None
 
     @staticmethod
-    def create_model(model_type: str) -> nn.Module:
+    def create_model_2(model_type: str) -> nn.Module:
         """
         :param model_type: a string specifying which model to load. [dino_vits8 | dino_vits16 | dino_vitb8 |
                            dino_vitb16 | vit_small_patch8_224 | vit_small_patch16_224 | vit_base_patch8_224 |
                            vit_base_patch16_224]
         :return: the model
         """
-        if "dino" in model_type:
+        if "dino_vits8" in model_type:
             model = torch.hub.load("facebookresearch/dino:main", model_type)
         else:  # model from timm -- load weights from timm to dino model (enables working on arbitrary size images).
-            temp_model = timm.create_model(model_type, pretrained=True)
-            model_type_dict = {
-                "vit_small_patch16_224": "dino_vits16",
-                "vit_small_patch8_224": "dino_vits8",
-                "vit_base_patch16_224": "dino_vitb16",
-                "vit_base_patch8_224": "dino_vitb8",
-            }
-            model = torch.hub.load(
-                "facebookresearch/dino:main", model_type_dict[model_type]
-            )
-            temp_state_dict = temp_model.state_dict()
-            del temp_state_dict["head.weight"]
-            del temp_state_dict["head.bias"]
-            model.load_state_dict(temp_state_dict)
+            raise AttributeError(f"{model_type} is not supported.")
+
+        for p in model.parameters():
+            p.requires_grad = False
+        model.eval()
+
         return model
 
     @staticmethod
-    def create_model(
-        model_type: str, model_dir: str, head: str, state_dict=None
-    ) -> nn.Module:
+    def create_model(model_type: str, head: str, state_dict) -> nn.Module:
         """
         :param head: chose between teacher and student networks
         :param model_dir: directory of pretrained model
@@ -123,18 +115,23 @@ class ViTExtractor:
         elif "vitb" in model_type:
             model_type = "vit_base"
 
+        # Create correct model class
         model = vits.__dict__[model_type](patch_size=patch, num_classes=0)
 
         for p in model.parameters():
             p.requires_grad = False
         model.eval()
 
-        # if pretrained
-        if model_dir:
-            state_dict = torch.load(model_dir, map_location="cpu")
+        # Load pretrained weights if available from file
+        if isinstance(state_dict, Path):
+            print(f"Loading model from {state_dict}")
+
+            state_dict = torch.load(state_dict, map_location="cpu")
             state_dict = state_dict[head]
+
         # remove `module.` prefix
         state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+
         # remove `backbone.` prefix induced by multicrop wrapper
         state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
         state_dict = {k.replace("head.", ""): v for k, v in state_dict.items()}
@@ -267,7 +264,7 @@ class ViTExtractor:
                 .reshape(B, N, 3, module.num_heads, C // module.num_heads)
                 .permute(2, 0, 3, 1, 4)
             )
-            self._feats.append(qkv[facet_idx])  # Bxhxtxd
+            self._feats.append(qkv[facet_idx])  # BxhxNx(D/h)
 
         return _inner_hook
 
@@ -307,16 +304,22 @@ class ViTExtractor:
     def _extract_features(
         self, batch: torch.Tensor, layers: List[int] = 11, facet: str = "key"
     ) -> List[torch.Tensor]:
+        """Extract features from the model
+
+        Runs a forward pass of the model with hooks and extracts relevant features
+
+        Args:
+            batch: batch to extract features for. Has shape BxCxHxW.
+            layers: layer to extract. A number between 0 to 11.
+            facet: facet to extract. One of the following options: ['key' | 'query' | 'value' | 'token' | 'attn']
+
+        Returns:
+            A list of feature tensors extracted from the model.
+            if facet is 'key' | 'query' | 'value' has shape BxhxNxD
+            if facet is 'attn' has shape BxhxNxN
+            if facet is 'token' has shape BxNxd
         """
-        extract features from the model
-        :param batch: batch to extract features for. Has shape BxCxHxW.
-        :param layers: layer to extract. A number between 0 to 11.
-        :param facet: facet to extract. One of the following options: ['key' | 'query' | 'value' | 'token' | 'attn']
-        :return : tensor of features.
-                  if facet is 'key' | 'query' | 'value' has shape Bxhxtxd
-                  if facet is 'attn' has shape Bxhxtxt
-                  if facet is 'token' has shape Bxtxd
-        """
+
         B, C, H, W = batch.shape
         self._feats = []
         self._register_hooks(layers, facet)
@@ -407,13 +410,17 @@ class ViTExtractor:
         bin: bool = False,
         include_cls: bool = False,
     ) -> torch.Tensor:
-        """
-        extract descriptors from the model
-        :param batch: batch to extract descriptors for. Has shape BxCxHxW.
-        :param layers: layer to extract. A number between 0 to 11.
-        :param facet: facet to extract. One of the following options: ['key' | 'query' | 'value' | 'token']
-        :param bin: apply log binning to the descriptor. default is False.
-        :return: tensor of descriptors. Bx1xtxd' where d' is the dimension of the descriptors.
+        """Extracts descriptors from the model
+
+        Args:
+            batch: batch to extract descriptors for. Has shape BxCxHxW.
+            layers: layer to extract. A number between 0 to 11.
+            facet: facet to extract. One of the following options: ['key' | 'query' | 'value' | 'token']
+            bin: apply log binning to the descriptor. default is False.
+
+
+        Returns:
+            tensor of descriptors. Bx1xtxd' where d' is the dimension of the descriptors.
         """
         assert facet in [
             "key",

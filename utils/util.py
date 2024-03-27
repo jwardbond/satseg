@@ -155,15 +155,20 @@ def load_data(adj, node_feats):
     return node_feats, edge_index, edge_weight
 
 
-def load_data_img(chosen_dir, image_size):
+def load_data_img(imgpth: str, image_size: int):
+    """Loads an image from a file
+
+    Args:
+        imgpth (str): Path to the image file
+        image_size (int): Desired # of pixels for smallest edge in image
+
+    Returns:
+        image_tensor (torch.Tensor): Resized image as a tensor (1 x C x H_new x W_new)
+        image (np.ndarray): Original image as a numpy array (HxWxC)
     """
-    Load image to model (Resize, To tensor, normalize)
-    @param chosen_dir: Directory for loaded image
-    @param image_size: Output size for image
-    @return: Resized image as a tensor and original image as a tuple
-    """
+
     # Load image
-    pil_image = Image.open(chosen_dir).convert("RGB")
+    pil_image = Image.open(imgpth).convert("RGB")
 
     # Define transformations
     prep = transforms.Compose(

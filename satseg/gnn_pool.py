@@ -5,14 +5,24 @@ import torch_geometric.nn as pyg_nn
 
 
 class GNNpool(nn.Module):
+    """Implementation of mincutpool model from: https://arxiv.org/pdf/1907.00481v6.pdf
+
+    Attributes:
+        device: Device to run the model on
+        num_clusters: Number of cluster to output
+        mlp_hidden: Size of mlp hidden layers
+        convs: GNN conv layers (GCN)
+        mlp: MLP layers
+    """
+
     def __init__(self, input_dim, conv_hidden, mlp_hidden, num_clusters, device):
         """
-        implementation of mincutpool model from: https://arxiv.org/pdf/1907.00481v6.pdf
-        @param input_dim: Size of input nodes features
-        @param conv_hidden: Size Of conv hidden layers
-        @param mlp_hidden: Size of mlp hidden layers
-        @param num_clusters: Number of cluster to output
-        @param device: Device to run the model on
+        Args:
+            input_dim: Size of input nodes features
+            conv_hidden: Size Of conv hidden layers
+            mlp_hidden: Size of mlp hidden layers
+            num_clusters: Number of cluster to output
+            device: Device to run the model on
         """
         super(GNNpool, self).__init__()
         self.device = device
@@ -20,11 +30,15 @@ class GNNpool(nn.Module):
         self.mlp_hidden = mlp_hidden
 
         # GNN conv
-        self.convs = pyg_nn.GCN(input_dim, conv_hidden, 1, act='relu')
+        self.convs = pyg_nn.GCN(input_dim, conv_hidden, 1, act="relu")
+
         # MLP
         self.mlp = nn.Sequential(
-            nn.Linear(conv_hidden, mlp_hidden), nn.ELU(), nn.Dropout(0.25),
-            nn.Linear(mlp_hidden, self.num_clusters))
+            nn.Linear(conv_hidden, mlp_hidden),
+            nn.ELU(),
+            nn.Dropout(0.25),
+            nn.Linear(mlp_hidden, self.num_clusters),
+        )
 
     def forward(self, data, A):
         """
@@ -49,7 +63,7 @@ class GNNpool(nn.Module):
         """
         loss calculation, relaxed form of Normalized-cut
         @param A: Adjacency matrix of the graph
-        @param S: Polled graph (argmax of S)
+        @param S: Pooled graph (argmax of S)
         @return: loss value
         """
         # cut loss

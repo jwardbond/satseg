@@ -1,5 +1,6 @@
 import os
 import argparse
+from pathlib import Path
 from collections import defaultdict
 
 import yaml
@@ -16,6 +17,18 @@ from satseg.features_extract import deep_features
 
 ##########################################################################################
 # Adapted from https://github.com/SAMPL-Weizmann/DeepCut
+
+# Note that for all code herein, the following convention is used:
+#   D is size of deep feature vector
+#   B is batch size
+#   C is the number of channels
+#   H is image height
+#   W is image width
+#   P is patch size
+#   N is the number of tokens
+#       [1+(H-P)//stride] * [1+(W-P)//stride]
+#       + 1 (if include_cls)
+#   h is the number of attention heads
 ##########################################################################################
 
 
@@ -253,7 +266,7 @@ def GNN_seg_image(
     in_dir: str,
     out_dir: str,
     save: bool,
-    pretrained_weights: str,
+    pretrained_weights: Path,
     res: tuple[int, int],
     stride: int,
     layer: int,
@@ -299,14 +312,36 @@ def GNN_seg_image(
         "dino_vits8", stride, model_dir=pretrained_weights, device=device
     )
 
+    if not log_bin:
+        feats_dim = 384
+    else:
+        feats_dim = 6528
+
+    # if two stage make first stage foreground detection with k == 2
+    if mode == 1 or mode == 2:
+        foreground_k = K
+        K = 2
+
+    ##########################################################################################
+    # GNN model init
+    ##########################################################################################
+    if cut == 0:
+        from gnn_pool import GNNpool
+    else:
+        from gnn_pool_cc import GNNpool
+
+    model = GNNpool(feats_dim, 64, 32, K, device).to(device)
+
 
 def process_config(confpath):
     """Loads and processes the config file for running satseg"""
+
+    # Loading
     with open(confpath) as f:
         config = yaml.safe_load(f)
-
     config = defaultdict(None, config)
 
+    # Processing
     config["device"] = config["device"] if torch.cuda.is_available() else "cpu"
     config["res"] = tuple(config["res"])
 
@@ -317,8 +352,10 @@ def process_config(confpath):
     if config["cut"] == 1:  # If Correlational Clustering, set max # clusters
         config["K"] = 10
 
+    config["pretrained_weights"] = Path(config["pretrained_weights"])
+
     # If Directory doesn't exist than download
-    if not os.path.exists(config["pretrained_weights"]):
+    if not config["pretrained_weights"].exists():
         url = "https://dl.fbaipublicfiles.com/dino/dino_deitsmall8_pretrain/dino_deitsmall8_pretrain_full_checkpoint.pth"
         utils.download_url(url, config["pretrained_weights"])
 
