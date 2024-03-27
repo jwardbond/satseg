@@ -2,6 +2,7 @@
 .vscode/
 .resources/
 .deepcut/
+models/*
 
 ##### DEFAULTS #####
 # Byte-compiled / optimized / DLL files
