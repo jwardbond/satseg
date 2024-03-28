@@ -55,7 +55,7 @@ class GNNpool(nn.Module):
         # pass feats through mlp
         H = self.mlp(x)
         # cluster assignment for matrix S
-        S = F.softmax(H)
+        S = F.softmax(H, dim=-1)
 
         return A, S
 

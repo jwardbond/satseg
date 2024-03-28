@@ -40,11 +40,15 @@ class GNNpool(nn.Module):
         )
 
     def forward(self, data, A):
-        """
-        forward pass of the model
-        @param data: Graph in Pytorch geometric data format
-        @param A: Adjacency matrix of the graph
-        @return: Adjacency matrix of the graph and pooled graph (argmax of S)
+        """Forward pass of the model
+
+        Args:
+            data: Graph in Pytorch geometric data format
+            A: Adjacency matrix of the graph
+
+        Returns:
+            A: Adjacency matrix of the graph - unchanged - (NxN)
+            S: Pooled graph (softmax of S) - (N x num clusters)
         """
         x, edge_index, edge_atrr = data.x, data.edge_index, data.edge_attr
 
@@ -55,7 +59,7 @@ class GNNpool(nn.Module):
         H = self.mlp(x)
 
         # cluster assignment for matrix S
-        S = F.softmax(H)
+        S = F.softmax(H, dim=-1)  # N x num clusters
 
         return A, S
 
