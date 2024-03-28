@@ -100,12 +100,14 @@ def create_adj(F, cut, alpha=1):
     return W
 
 
-def im_show_n(im_arr, n, title):
-    """
-    Display images N in a row from arbitrary number of images in a list
-    :param im_arr: array of images
-    :param n: Number of subplots in a row
-    :param title: Window name
+def im_show_n(im_arr: list, n: int, title: str):
+    """Display images N in a row from arbitrary number of images in a list
+
+    Args:
+        im_arr: array of images
+        n: Number of subplots in a row
+        title: Window name
+
     @author:Amit
     """
     fig, axes = plt.subplots(

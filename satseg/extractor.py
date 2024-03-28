@@ -420,7 +420,7 @@ class ViTExtractor:
 
 
         Returns:
-            tensor of descriptors. Bx1xtxd' where d' is the dimension of the descriptors.
+            tensor of descriptors. Bx1xNx?? where ?? is the dimension of the descriptors (usually D for QVK)
         """
         assert facet in [
             "key",

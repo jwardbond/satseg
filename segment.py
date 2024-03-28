@@ -1,6 +1,6 @@
 import os
 import argparse
-from pathlib import Path
+import pathlib
 from collections import defaultdict
 
 import yaml
@@ -14,6 +14,7 @@ import utils
 from satseg.bilateral_solver import bilateral_solver_output
 from satseg.extractor import ViTExtractor
 from satseg.features_extract import deep_features
+from satseg.gnn_pool import GNNpool
 
 ##########################################################################################
 # Adapted from https://github.com/SAMPL-Weizmann/DeepCut
@@ -38,7 +39,7 @@ def GNN_seg_dataset(
     alpha,
     epochs,
     K,
-    pretrained_weights,
+    pretrained_weights: pathlib.PurePath,
     in_dir,
     out_dir,
     save,
@@ -158,7 +159,8 @@ def GNN_seg_dataset(
         ##########################################################################################
         # Post-processing Connected Component/bilateral solver
         ##########################################################################################
-        mask0, S = utils.graph_to_mask(S, cc, stride, image_tensor, image)
+        P = extractor.model.patch_embed.patch_size
+        mask0, S = utils.graph_to_mask(S, cc, stride, P, image_tensor, image)
         # apply bilateral solver
         if bs:
             mask0 = bilateral_solver_output(image, mask0)[1]
@@ -204,7 +206,7 @@ def GNN_seg_dataset(
         S_2 = torch.argmax(S_2, dim=-1)
         S[sec_index] = S_2 + 3
 
-        mask1, S = utils.graph_to_mask(S, cc, stride, image_tensor, image)
+        mask1, S = utils.graph_to_mask(S, cc, stride, P, image_tensor, image)
 
         if mode == 1:
             utils.save_or_show(
@@ -244,7 +246,7 @@ def GNN_seg_dataset(
         S_3 = torch.argmax(S_3, dim=-1)
         S[sec_index] = S_3 + foreground_k + 5
 
-        mask2, S = utils.graph_to_mask(S, cc, stride, image_tensor, image)
+        mask2, S = utils.graph_to_mask(S, cc, stride, P, image_tensor, image)
         if bs:
             mask_foreground = mask0
             mask_background = np.where(mask2 != foreground_k + 5, 0, 1)
@@ -263,10 +265,9 @@ def GNN_seg_dataset(
 def GNN_seg_image(
     mode: int,
     device: str,
-    in_dir: str,
     out_dir: str,
     save: bool,
-    pretrained_weights: Path,
+    pretrained_weights: pathlib.PurePath,
     res: tuple[int, int],
     stride: int,
     layer: int,
@@ -278,6 +279,8 @@ def GNN_seg_image(
     cc: bool,
     bs: bool,
     log_bin: bool,
+    imgpath: pathlib.PurePath,
+    **kwargs,
 ):
     """Segment images in a dataset using ViT+GNN methodology
 
@@ -313,7 +316,7 @@ def GNN_seg_image(
     )
 
     if not log_bin:
-        feats_dim = 384
+        feats_dim = 384  # Default for ViT-small DiNO
     else:
         feats_dim = 6528
 
@@ -323,14 +326,66 @@ def GNN_seg_image(
         K = 2
 
     ##########################################################################################
-    # GNN model init
+    # GNN init
     ##########################################################################################
     if cut == 0:
-        from gnn_pool import GNNpool
+        from satseg.gnn_pool import GNNpool
     else:
-        from gnn_pool_cc import GNNpool
+        from satseg.gnn_pool_cc import GNNpool
 
     model = GNNpool(feats_dim, 64, 32, K, device).to(device)
+    model.train()
+    if mode == 1 or mode == 2:
+        model2 = GNNpool(feats_dim, 64, 32, foreground_k, device).to(device)
+        model2.train()
+    if mode == 2:
+        model3 = GNNpool(feats_dim, 64, 32, 2, device).to(device)
+        model3.train()
+
+    opt = optim.AdamW(model.parameters(), lr=0.001)
+
+    ##########################################################################################
+    # Load Data
+    ##########################################################################################
+    image_tensor, image = utils.load_data_img(imgpath, res)
+
+    F = deep_features(image_tensor, extractor, layer, facet, bin=log_bin, device=device)
+    W = utils.create_adj(F, cut, alpha)
+
+    # Data to pytorch_geometric format
+    node_feats, edge_index, edge_weight = utils.load_data(W, F)
+    data = Data(node_feats, edge_index, edge_weight).to(device)
+
+    ##########################################################################################
+    # GNN pass
+    ##########################################################################################
+    for _ in range(epochs[0]):
+        opt.zero_grad()
+        A, S = model(data, torch.from_numpy(W).to(device))
+        loss = model.loss(A, S)
+        loss.backward()
+        opt.step()
+
+    S = S.detach().cpu()
+    S = torch.argmax(S, dim=-1)
+
+    ##########################################################################################
+    # Post-processing
+    ##########################################################################################
+    P = extractor.model.patch_embed.patch_size
+    mask0, S = utils.graph_to_mask(S, cc, stride, P, image_tensor, image)
+
+    if bs:
+        mask0 = bilateral_solver_output(image, mask0)[1]
+
+    if mode == 0:
+        utils.save_or_show(
+            [image, mask0, utils.apply_seg_map(image, mask0, 0.7)],
+            imgpath.stem,
+            out_dir,
+            save,
+        )
+        return
 
 
 def process_config(confpath):
@@ -352,7 +407,7 @@ def process_config(confpath):
     if config["cut"] == 1:  # If Correlational Clustering, set max # clusters
         config["K"] = 10
 
-    config["pretrained_weights"] = Path(config["pretrained_weights"])
+    config["pretrained_weights"] = pathlib.Path(config["pretrained_weights"])
 
     # If Directory doesn't exist than download
     if not config["pretrained_weights"].exists():
@@ -375,6 +430,7 @@ if __name__ == "__main__":
     config = process_config(args.confpath)
 
     if args.filepath:
-        GNN_seg_image(**config)
+        imgpath = pathlib.Path(args.filepath)
+        GNN_seg_image(**config, imgpath=imgpath)
     else:
         GNN_seg_dataset(**config)

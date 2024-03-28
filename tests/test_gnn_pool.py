@@ -1,6 +1,5 @@
 import unittest
 
-import numpy as np
 from pathlib import Path
 from torch_geometric.data import Data
 
