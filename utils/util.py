@@ -21,21 +21,44 @@ def save_or_show(arr, filename, dir, save=False):
         im_show_n(arr, 3, "org, mask, fused")
 
 
-def graph_to_mask(S, cc, stride, image_tensor, image):
-    # Reshape clustered graph
-    minus = 1 if stride == 4 else 0
-    # -1 is needed only for stride==4 of descriptor extraction
+def graph_to_mask(
+    S: torch.Tensor,
+    cc: bool,
+    stride: int,
+    patch_size: int,
+    image_tensor: torch.Tensor,
+    image: np.ndarray,
+):
+    """
+    Args:
+        S: Segmentation map (Nx1)
+        cc: Connected component flag
+        stride: Stride length used to generate patches
+        patch_size: Size of patches (P)
+        image_tensor: Tensor of original image after scaling (1xCxHxW)
+        imageL: Original image as a numpy array (HxWxC)
+    Returns:
+        mask: Segmentation mask as a numpy array (HxW)
+        S: Segmentation map as a tensor
+    """
+    # Reshape clustered graph to size of image
     S = np.array(
         torch.reshape(
             S,
             (
-                int(image_tensor.shape[2] // stride) - minus,
-                int(image_tensor.shape[3] // stride) - minus,
+                int(
+                    1 + (image_tensor.shape[2] - patch_size) // stride
+                ),  # height in # patches
+                int(
+                    1 + (image_tensor.shape[3] - patch_size) // stride
+                ),  # width in # patches
             ),
         )
-    )
+    )  # HxW (in patches)
 
     # check if background is 0 and main object is 1 in segmentation map
+    # checks each corner
+    # inverts if not
     if (
         S[0][0]
         + S[S.shape[0] - 1][0]
@@ -55,19 +78,21 @@ def graph_to_mask(S, cc, stride, image_tensor, image):
         interpolation=cv2.INTER_NEAREST,
     )
 
-    S = torch.tensor(np.reshape(S, (S.shape[0] * S.shape[0],))).type(torch.LongTensor)
+    S = torch.tensor(np.reshape(S, (S.shape[0] * S.shape[1],))).type(torch.LongTensor)
 
     return mask, S
 
 
 def create_adj(F, cut, alpha=1):
     W = F @ F.T
+
     # if NCut
     if cut == 0:
         # threshold
         W = W * (W > 0)
         # norm
         W = W / W.max()
+
     # if CC
     else:
         W = W - (W.max() / alpha)
@@ -140,12 +165,17 @@ ncut = discr_ncut(A, B, np.array(deg), W)
 """
 
 
-def load_data(adj, node_feats):
-    """
-    Load data to pytorch-geometric data format
-    @param adj: Adjacency metrix of a graph
-    @param node_feats: Feature matrix of a graph
-    @return: Graph in pytorch-geometric data format
+def load_data(adj: np.ndarray, node_feats: np.ndarray):
+    """Load data to pytorch-geometric data format
+
+    Args:
+        adj (np.ndarray): Adjacency matrix of a graph
+        node_feats (np.ndarray): Feature matrix of a graph
+
+    Returns:
+        node_feats: tensor of node features (NxD)
+        edge_index: tensor of edge indices (2xE)
+        edge_weight: tensor of edge weights (Ex1)
     """
     node_feats = torch.from_numpy(node_feats)
     edge_index = torch.from_numpy(np.array(np.nonzero((adj > 0))))
@@ -190,11 +220,14 @@ def load_data_img(imgpth: str, image_size: int):
     return image_tensor, image
 
 
-def largest_cc(S):
-    """
-    Gets a segmentation map and finds the largest connected component, discards the rest of the segmentation map.
-    @param S: Segmentation map
-    @return: Largest connected component in given segmentation map
+def largest_cc(S: np.ndarray):
+    """Gets a segmentation map and finds the largest connected component, discards the rest of the segmentation map.
+
+    Args:
+        S: Segmentation map
+
+    Returns:
+        Largest connected component in given segmentation map
     """
     us_cc = cv2.connectedComponentsWithStats(S.astype("uint8"), connectivity=4)
     # get indexes of sorted sizes for CCs
