@@ -84,6 +84,16 @@ def graph_to_mask(
 
 
 def create_adj(F, cut, alpha=1):
+    """Create adjacency matrix from feature vectors
+
+    Args:
+        F: Feature matrix (NxD)
+        cut: Cut type (0 for NCut, 1 for CC)
+        alpha: Alpha value for CC cut
+
+    Returns:
+        W: Adjacency matrix (NxN)
+    """
     W = F @ F.T
 
     # if NCut
@@ -171,8 +181,8 @@ def load_data(adj: np.ndarray, node_feats: np.ndarray):
     """Load data to pytorch-geometric data format
 
     Args:
-        adj (np.ndarray): Adjacency matrix of a graph
-        node_feats (np.ndarray): Feature matrix of a graph
+        adj: Adjacency matrix of a graph (NxN)
+        node_feats: Feature matrix of a graph (NxD)
 
     Returns:
         node_feats: tensor of node features (NxD)
@@ -180,7 +190,7 @@ def load_data(adj: np.ndarray, node_feats: np.ndarray):
         edge_weight: tensor of edge weights (Ex1)
     """
     node_feats = torch.from_numpy(node_feats)
-    edge_index = torch.from_numpy(np.array(np.nonzero((adj > 0))))
+    edge_index = torch.from_numpy(np.array(np.nonzero(adj > 0)))
     row, col = edge_index
     edge_weight = torch.from_numpy(adj[row, col])
 

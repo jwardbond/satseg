@@ -1,10 +1,11 @@
 import unittest
+import itertools
 
 import torch
 import numpy as np
 from PIL import Image
 from pathlib import Path
-from utils import load_data_img, create_adj, graph_to_mask
+from utils import load_data_img, create_adj, graph_to_mask, load_data
 
 
 class TestUtils(unittest.TestCase):
@@ -34,18 +35,30 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(image.shape, (pil_image.size[1], pil_image.size[0], 3))
 
     def test_create_adj(self):
-        features = np.random.rand(100, 384)  # NxD after feature extraction
+        F = np.array([[1, 2], [1, 1.9], [-2, -1]])  # NxD after feature extraction
 
         # Build adjacency matrix
         ccut = 1
         ncut = 0
-        alpha = 3
-        Wccut = create_adj(features, ccut, alpha)
-        Wncut = create_adj(features, ncut, alpha)
+        alpha = 4
 
-        self.assertEqual(Wccut.shape, (100, 100))
+        Wccut = create_adj(F, ccut, alpha)
+        Wncut = create_adj(F, ncut, alpha)
 
-        self.assertEqual(Wncut.shape, (100, 100))
+        # Correct solutions
+        Wccut_correct = np.array(
+            [[3.75, 3.55, -5.25], [3.55, 3.36, -5.15], [-5.25, -5.15, 3.75]]
+        )
+
+        Wncut_correct = np.array([[1, 0.96, 0], [0.96, 0.922, 0], [0, 0, 1]])
+
+        # Test results
+        self.assertEqual(Wccut.shape, (F.shape[0], F.shape[0]))
+        self.assertEqual(Wncut.shape, (F.shape[0], F.shape[0]))
+
+        self.assertTrue(np.allclose(Wccut, Wccut_correct, atol=0.01))
+        self.assertTrue(np.allclose(Wncut, Wncut_correct, atol=0.01))
+
         self.assertGreater(Wncut.max(), 0)
 
     def test_graph_to_mask(self):
@@ -70,6 +83,28 @@ class TestUtils(unittest.TestCase):
 
         self.assertEqual(mask.shape, (image.shape[0], image.shape[1]))
         self.assertEqual(S.shape, (N,))
+
+    def test_load_data(self):
+        # Setup
+        F = np.array([[1, 2], [1, 1.9], [-2, -1]])
+        A = create_adj(F, 1, 4)
+
+        # Create correct outputs
+        edge_index_ccut = np.array(
+            [[0, 0, 0, 1, 1, 1, 2, 2, 2], [0, 1, 2, 0, 1, 2, 0, 1, 2]]
+        )
+        edge_weight_ccut = np.array(
+            [3.75, 3.55, -5.25, 3.55, 3.36, -5.15, -5.25, -5.15, 3.75]
+        )
+
+        # Run
+        node_feats, edge_index, edge_weight = load_data(A, F)
+
+        # Test
+        self.assertEqual(node_feats.shape, F.shape)
+        self.assertTrue(np.array_equal(node_feats.numpy(), F))
+        self.assertTrue(np.allclose(edge_index.numpy(), edge_index_ccut))
+        self.assertTrue(np.allclose(edge_weight.numpy(), edge_weight_ccut))
 
 
 if __name__ == "__main__":
