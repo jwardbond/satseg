@@ -3,6 +3,9 @@
 .resources/
 .deepcut/
 models/*
+input_images/*
+
+test.py
 
 ##### DEFAULTS #####
 # Byte-compiled / optimized / DLL files
