@@ -48,18 +48,18 @@ class GNNpool(nn.Module):
 
         Returns:
             A: Adjacency matrix of the graph - unchanged - (NxN)
-            S: Pooled graph (softmax of S) - (N x num clusters)
+            S: Pooled graph (argmax of S) (Nx1)
         """
         x, edge_index, edge_atrr = data.x, data.edge_index, data.edge_attr
 
-        x = self.convs(x, edge_index, edge_atrr)  # applying con5v
+        x = self.convs(x, edge_index, edge_atrr)  # applying conv
         x = F.elu(x)
 
         # pass feats through mlp
         H = self.mlp(x)
 
         # cluster assignment for matrix S
-        S = F.softmax(H, dim=-1)  # N x num clusters
+        S = F.softmax(H, dim=-1)
 
         return A, S
 
