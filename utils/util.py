@@ -1,6 +1,5 @@
 from torchvision import transforms
 import matplotlib.pyplot as plt
-from matplotlib import cm
 from numba import njit
 from tqdm import tqdm
 from PIL import Image
