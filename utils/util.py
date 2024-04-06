@@ -1,5 +1,6 @@
 from torchvision import transforms
 import matplotlib.pyplot as plt
+from pathlib import Path
 from numba import njit
 from tqdm import tqdm
 from PIL import Image
@@ -265,7 +266,9 @@ def apply_seg_map(img, seg, alpha):
     @param alpha: The opacity of the segmentation overlay, 0==transparent, 1==only segmentation map
     @return: segmented image as a numpy array
     """
-    plt.imsave("./tmp/tmp.png", seg, cmap=cmap)
+    tmp_path = Path("./tmp")
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    plt.imsave(tmp_path / "tmp.png", seg, cmap=cmap)
     seg = (plt.imread("./tmp/tmp.png")[:, :, :3] * 255).astype(np.uint8)
     return ((seg * alpha) + (img * (1 - alpha))).astype(np.uint8)
 
