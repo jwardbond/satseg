@@ -473,6 +473,9 @@ def process_config(confpath):
     config["pretrained_weights"] = pathlib.Path(config["pretrained_weights"])
 
     # If Directory doesn't exist than download
+    model_folder = pathlib.Path(config["pretrained_weights"].parents[0])
+    model_folder.mkdir(parents=True, exist_ok=True)
+
     if not config["pretrained_weights"].exists():
         url = "https://dl.fbaipublicfiles.com/dino/dino_deitsmall8_pretrain/dino_deitsmall8_pretrain_full_checkpoint.pth"
         utils.download_url(url, config["pretrained_weights"])
