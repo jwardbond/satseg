@@ -4,6 +4,7 @@ from collections import defaultdict
 
 import yaml
 import numpy as np
+from tqdm import tqdm
 import torch
 import torch.optim as optim
 from torch_geometric.data import Data
@@ -128,7 +129,7 @@ def GNN_seg_image(
     ##########################################################################################
     # GNN pass
     ##########################################################################################
-    for _ in range(epochs[0]):
+    for _ in tqdm(range(epochs[0]), ncols=4):
         opt.zero_grad()
         A, S = model(data, torch.from_numpy(W).to(device))
         loss = model.loss(A, S)
