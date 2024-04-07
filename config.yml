@@ -6,7 +6,7 @@ mode: 0                  #(normal|2-stage fore|2-stage fore+back) == (0|1|2)
 device: "cuda"            #(cuda|cpu)
 
 # Data settings
-in_dir: "./input_images/deepglobe/custom/images/"
+in_dir: "./deepglobe_custom_input/images/"
 out_dir: "./results/deepglobe/custom/training/"
 save: True
 # ViT settings
