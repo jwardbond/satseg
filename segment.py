@@ -77,6 +77,10 @@ def GNN_seg_image(
         log_bin: True to use log binning during post-processing
     """
 
+    # Set up tmp directory
+    tmp_dir = pathlib.Path("./.tmp")
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
     ##########################################################################################
     # ViT init
     ##########################################################################################
@@ -264,7 +268,7 @@ def GNN_seg_dataset(
     cc: bool,
     bs: bool,
     log_bin: bool,
-    filename_append: str,
+    filename_append: str = "",
     **kwargs,
 ):
     """Segment images in a dataset using ViT+GNN methodology
@@ -294,6 +298,9 @@ def GNN_seg_dataset(
         filename_append: Appended string to output filename
     """
 
+    tmp_dir = pathlib.Path("./.tmp")
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
     ##########################################################################################
     # ViT init
     ##########################################################################################
@@ -320,18 +327,16 @@ def GNN_seg_dataset(
         from satseg.gnn_pool_cc import GNNpool
 
     model = GNNpool(feats_dim, 64, 32, K, device).to(device)
-    # torch.save(model.state_dict(), "model.pt")
+    torch.save(model.state_dict(), tmp_dir / "model.pt")
     model.train()
     if mode == 1 or mode == 2:
         model2 = GNNpool(feats_dim, 64, 32, foreground_k, device).to(device)
-        # torch.save(model2.state_dict(), "model2.pt")
+        torch.save(model2.state_dict(), tmp_dir / "model2.pt")
         model2.train()
     if mode == 2:
         model3 = GNNpool(feats_dim, 64, 32, 2, device).to(device)
-        # torch.save(model3.state_dict(), "model3.pt")
+        torch.save(model3.state_dict(), tmp_dir / "model3.pt")
         model3.train()
-
-    opt = optim.AdamW(model.parameters(), lr=0.001)
 
     ##########################################################################################
     # Load Data
@@ -339,10 +344,10 @@ def GNN_seg_dataset(
     for imgpath in tqdm(
         list(in_dir.glob("*.jpg"))
         + list(in_dir.glob("*.png"))
-        + list(in_dir.glob("*.jpeg"))
+        + list(in_dir.glob("*.jpeg")),
+        ncols=100,
     ):
-        imgpath = list(in_dir.glob("*.jpg"))[0]
-        print(f"Filename {imgpath}")
+        tqdm.write(f"Filename {imgpath}")
         image_tensor, image = utils.load_data_img(imgpath, res)
 
         F = deep_features(
@@ -357,7 +362,12 @@ def GNN_seg_dataset(
         ##########################################################################################
         # GNN pass
         ##########################################################################################
-        # model.load_state_dict(torch.load("./model.pt", map_location=torch.device(device)))
+
+        # Load starting weights
+        model.load_state_dict(
+            torch.load(tmp_dir / "model.pt", map_location=torch.device(device))
+        )
+        opt = optim.AdamW(model.parameters(), lr=0.001)
 
         losses = []
         epchs = []
@@ -398,7 +408,7 @@ def GNN_seg_dataset(
                 out_dir,
                 save,
             )
-            return
+            continue
 
         ##########################################################################################
         # Second pass on foreground
@@ -413,7 +423,7 @@ def GNN_seg_dataset(
 
         # GNN Pass
         model2.load_state_dict(
-            torch.load("./model2.pt", map_location=torch.device(device))
+            torch.load(tmp_dir / "model2.pt", map_location=torch.device(device))
         )
 
         opt = optim.AdamW(model2.parameters(), lr=0.001)
@@ -438,7 +448,7 @@ def GNN_seg_dataset(
                 out_dir,
                 save,
             )
-            return
+            continue
 
         ##########################################################################################
         # Second pass on background
@@ -452,7 +462,7 @@ def GNN_seg_dataset(
 
         # GNN Pass
         model3.load_state_dict(
-            torch.load("./model3.pt", map_location=torch.device(device))
+            torch.load(tmp_dir / "model3.pt", map_location=torch.device(device))
         )
 
         opt = optim.AdamW(model3.parameters(), lr=0.001)
@@ -561,10 +571,4 @@ if __name__ == "__main__":
             # Save raw config file
             with open(config["out_dir"] / "config.yml", "w") as f:
                 yaml.dump(raw_config, f, sort_keys=False)
-
-        for layer in [1, 11]:
-            config["layer"] = layer
-            for facet in ["query", "key", "value", "token", "attn"]:
-                config["facet"] = facet
-                filename_append = f"L{layer}_{facet}"
-                GNN_seg_dataset(**config, filename_append=filename_append)
+                GNN_seg_dataset(**config)

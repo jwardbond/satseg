@@ -2,6 +2,7 @@
 .vscode/
 .resources/
 .deepcut/
+.tmp/
 models/*
 results/*
 input_images/*
