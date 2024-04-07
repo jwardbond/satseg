@@ -2,11 +2,9 @@ import types
 import torch
 import math
 from pathlib import Path
-from typing import Union, List, Tuple
+from typing import List, Tuple
 
-from PIL import Image
 from torch import nn
-from torchvision import transforms
 import torch.nn.modules.utils as nn_utils
 
 import satseg.vision_transformer as vits
