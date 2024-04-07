@@ -77,25 +77,6 @@ class ViTExtractor:
         self.num_patches = None
 
     @staticmethod
-    def create_model_2(model_type: str) -> nn.Module:
-        """
-        :param model_type: a string specifying which model to load. [dino_vits8 | dino_vits16 | dino_vitb8 |
-                           dino_vitb16 | vit_small_patch8_224 | vit_small_patch16_224 | vit_base_patch8_224 |
-                           vit_base_patch16_224]
-        :return: the model
-        """
-        if "dino_vits8" in model_type:
-            model = torch.hub.load("facebookresearch/dino:main", model_type)
-        else:  # model from timm -- load weights from timm to dino model (enables working on arbitrary size images).
-            raise AttributeError(f"{model_type} is not supported.")
-
-        for p in model.parameters():
-            p.requires_grad = False
-        model.eval()
-
-        return model
-
-    @staticmethod
     def create_model(model_type: str, head: str, state_dict) -> nn.Module:
         """
         :param head: chose between teacher and student networks
