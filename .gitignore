@@ -3,6 +3,7 @@
 .resources/
 .deepcut/
 models/*
+results/*
 input_images/*
 
 test.py
