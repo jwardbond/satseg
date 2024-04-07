@@ -565,10 +565,11 @@ if __name__ == "__main__":
 
     elif args.experiment:
         if config["save"]:
-            # Create output dir
-            config["out_dir"].mkdir(parents=True, exist_ok=True)
+            # Create specific output dir
+            config["out_dir"] = config["out_dir"]
 
             # Save raw config file
             with open(config["out_dir"] / "config.yml", "w") as f:
                 yaml.dump(raw_config, f, sort_keys=False)
-                GNN_seg_dataset(**config)
+
+        GNN_seg_dataset(**config)
