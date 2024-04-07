@@ -1,22 +1,35 @@
 from torchvision import transforms
 import matplotlib.pyplot as plt
-from pathlib import Path
+import pandas as pd
 from numba import njit
 from tqdm import tqdm
 from PIL import Image
 import urllib.request
 import numpy as np
+import pathlib
 import torch
 import cv2
 
 cmap = "tab20"
 
 
-def save_or_show(arr, filename, dir, save=False):
+def save_loss(loss: list[float], epochs: list[int], outpath: pathlib.PurePath):
+    """Save or show loss plot
+
+    Args:
+        loss: List of loss values
+        epochs: List of epochs
+        dir: Directory to save the plot
+    """
+    df = pd.DataFrame({"epochs": epochs, "loss": loss})
+    df.to_csv(outpath, index=False)
+
+
+def save_or_show(arr, filename: str, dir: pathlib.PurePath, save=False):
     if save:
-        plt.imsave(dir + filename + "_org" + ".png", arr[0], cmap=cmap)
-        plt.imsave(dir + filename + "_mask" + ".png", arr[1], cmap=cmap)
-        plt.imsave(dir + filename + "_fused" + ".png", arr[2], cmap=cmap)
+        plt.imsave(dir / (filename + "_org" + ".png"), arr[0], cmap=cmap)
+        plt.imsave(dir / (filename + "_mask" + ".png"), arr[1], cmap=cmap)
+        plt.imsave(dir / (filename + "_fused" + ".png"), arr[2], cmap=cmap)
     else:
         im_show_n(arr, 3, "org, mask, fused")
 
@@ -56,16 +69,17 @@ def graph_to_mask(
         )
     )  # HxW (in patches)
 
-    # check if background is 0 and main object is 1 in segmentation map
-    # checks each corner
+    ## check if background is 0 and main object is 1 in segmentation map
+    ## checks each corner
+    ## Commented out for satellite images (no "background")
     # inverts if not
-    if (
-        S[0][0]
-        + S[S.shape[0] - 1][0]
-        + S[0][S.shape[1] - 1]
-        + S[S.shape[0] - 1][S.shape[1] - 1]
-    ) > 2:
-        S = 1 - S
+    # if (
+    #     S[0][0]
+    #     + S[S.shape[0] - 1][0]
+    #     + S[0][S.shape[1] - 1]
+    #     + S[S.shape[0] - 1][S.shape[1] - 1]
+    # ) > 2:
+    #     S = 1 - S
 
     # chose largest component (for k == 2)
     if cc:
@@ -266,7 +280,7 @@ def apply_seg_map(img, seg, alpha):
     @param alpha: The opacity of the segmentation overlay, 0==transparent, 1==only segmentation map
     @return: segmented image as a numpy array
     """
-    tmp_path = Path("./tmp")
+    tmp_path = pathlib.Path("./tmp")
     tmp_path.mkdir(parents=True, exist_ok=True)
     plt.imsave(tmp_path / "tmp.png", seg, cmap=cmap)
     seg = (plt.imread("./tmp/tmp.png")[:, :, :3] * 255).astype(np.uint8)

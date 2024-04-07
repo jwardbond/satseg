@@ -34,7 +34,7 @@ from satseg.features_extract import deep_features
 def GNN_seg_image(
     mode: int,
     device: str,
-    out_dir: str,
+    out_dir: pathlib.PurePath,
     save: bool,
     pretrained_weights: pathlib.PurePath,
     res: tuple[int, int],
@@ -129,15 +129,27 @@ def GNN_seg_image(
     ##########################################################################################
     # GNN pass
     ##########################################################################################
-    for _ in tqdm(range(epochs[0]), ncols=4):
+    losses = []
+    epchs = []
+    for i in tqdm(range(epochs[0]), ncols=50):
         opt.zero_grad()
         A, S = model(data, torch.from_numpy(W).to(device))
         loss = model.loss(A, S)
         loss.backward()
         opt.step()
 
+        losses.append(loss.item())
+        epchs.append(i)
+
     S = S.detach().cpu()
     S = torch.argmax(S, dim=-1)  # selects class with highest probability
+
+    if save:
+        utils.save_loss(
+            losses,
+            epchs,
+            out_dir / (imgpath.stem + "_losses.csv"),
+        )
 
     ##########################################################################################
     # Post-processing
@@ -161,6 +173,7 @@ def GNN_seg_image(
     # Second pass on foreground
     ##########################################################################################
     sec_index = np.nonzero(S).squeeze(1)
+
     F_2 = F[sec_index]
     W_2 = utils.create_adj(F_2, cut, alpha)
 
@@ -170,7 +183,7 @@ def GNN_seg_image(
 
     # GNN Pass
     opt = optim.AdamW(model2.parameters(), lr=0.001)
-    for _ in range(epochs[1]):
+    for _ in tqdm(range(epochs[1]), ncols=50):
         opt.zero_grad()
         A_2, S_2 = model2(data_2, torch.from_numpy(W_2).to(device))
         loss = model2.loss(A_2, S_2)
@@ -205,7 +218,7 @@ def GNN_seg_image(
 
     # GNN Pass
     opt = optim.AdamW(model3.parameters(), lr=0.001)
-    for _ in range(epochs[2]):
+    for _ in tqdm(range(epochs[2]), ncols=50):
         opt.zero_grad()
         A_3, S_3 = model3(data_3, torch.from_numpy(W_3).to(device))
         loss = model3.loss(A_3, S_3)
@@ -251,7 +264,7 @@ def GNN_seg_dataset(
     cc: bool,
     bs: bool,
     log_bin: bool,
-    append: str,
+    filename_append: str,
     **kwargs,
 ):
     """Segment images in a dataset using ViT+GNN methodology
@@ -278,7 +291,7 @@ def GNN_seg_dataset(
         cc: True to show only the largest component of clustering (K==2)
         bs: True to use bilateral solver during post-processing
         log_bin: True to use log binning during post-processing
-        append: Appended string to output filename
+        filename_append: Appended string to output filename
     """
 
     ##########################################################################################
@@ -323,133 +336,152 @@ def GNN_seg_dataset(
     ##########################################################################################
     # Load Data
     ##########################################################################################
-    # for imgpath in tqdm(
-    #     list(in_dir.glob("*.jpg"))
-    #     + list(in_dir.glob("*.png"))
-    #     + list(in_dir.glob("*.jpeg"))
-    # ):
-    imgpath = list(in_dir.glob("*.jpg"))[0]
-    print(f"Filename {imgpath}")
-    image_tensor, image = utils.load_data_img(imgpath, res)
+    for imgpath in tqdm(
+        list(in_dir.glob("*.jpg"))
+        + list(in_dir.glob("*.png"))
+        + list(in_dir.glob("*.jpeg"))
+    ):
+        imgpath = list(in_dir.glob("*.jpg"))[0]
+        print(f"Filename {imgpath}")
+        image_tensor, image = utils.load_data_img(imgpath, res)
 
-    F = deep_features(image_tensor, extractor, layer, facet, bin=log_bin, device=device)
-    W = utils.create_adj(F, cut, alpha)
+        F = deep_features(
+            image_tensor, extractor, layer, facet, bin=log_bin, device=device
+        )
+        W = utils.create_adj(F, cut, alpha)
 
-    # Data to pytorch_geometric format
-    node_feats, edge_index, edge_weight = utils.load_data(W, F)
-    data = Data(node_feats, edge_index, edge_weight).to(device)
+        # Data to pytorch_geometric format
+        node_feats, edge_index, edge_weight = utils.load_data(W, F)
+        data = Data(node_feats, edge_index, edge_weight).to(device)
 
-    ##########################################################################################
-    # GNN pass
-    ##########################################################################################
-    # model.load_state_dict(torch.load("./model.pt", map_location=torch.device(device)))
+        ##########################################################################################
+        # GNN pass
+        ##########################################################################################
+        # model.load_state_dict(torch.load("./model.pt", map_location=torch.device(device)))
 
-    for _ in range(epochs[0]):
-        opt.zero_grad()
-        A, S = model(data, torch.from_numpy(W).to(device))
-        loss = model.loss(A, S)
-        loss.backward()
-        opt.step()
+        losses = []
+        epchs = []
+        for i in range(epochs[0]):
+            opt.zero_grad()
+            A, S = model(data, torch.from_numpy(W).to(device))
+            loss = model.loss(A, S)
+            loss.backward()
+            opt.step()
 
-    S = S.detach().cpu()
-    S = torch.argmax(S, dim=-1)  # selects class with highest probability
+            # Logging
+            losses.append(loss.item())
+            epchs.append(i)
 
-    ##########################################################################################
-    # Post-processing
-    ##########################################################################################
-    P = extractor.model.patch_embed.patch_size
-    mask0, S = utils.graph_to_mask(S, cc, stride, P, image_tensor, image)
+        S = S.detach().cpu()
+        S = torch.argmax(S, dim=-1)  # selects class with highest probability
 
-    if bs:
-        mask0 = bilateral_solver_output(image, mask0)[1]
+        if save:
+            utils.save_loss(
+                losses,
+                epchs,
+                out_dir / (imgpath.stem + filename_append + "_losses.csv"),
+            )
 
-    if mode == 0:
+        ##########################################################################################
+        # Post-processing
+        ##########################################################################################
+        P = extractor.model.patch_embed.patch_size
+        mask0, S = utils.graph_to_mask(S, cc, stride, P, image_tensor, image)
+
+        if bs:
+            mask0 = bilateral_solver_output(image, mask0)[1]
+
+        if mode == 0:
+            utils.save_or_show(
+                [image, mask0, utils.apply_seg_map(image, mask0, 0.7)],
+                imgpath.stem + filename_append,
+                out_dir,
+                save,
+            )
+            return
+
+        ##########################################################################################
+        # Second pass on foreground
+        ##########################################################################################
+        sec_index = np.nonzero(S).squeeze(1)
+        F_2 = F[sec_index]
+        W_2 = utils.create_adj(F_2, cut, alpha)
+
+        # Data to pytorch_geometric format
+        node_feats, edge_index, edge_weight = utils.load_data(W_2, F_2)
+        data_2 = Data(node_feats, edge_index, edge_weight).to(device)
+
+        # GNN Pass
+        model2.load_state_dict(
+            torch.load("./model2.pt", map_location=torch.device(device))
+        )
+
+        opt = optim.AdamW(model2.parameters(), lr=0.001)
+        for _ in range(epochs[1]):
+            opt.zero_grad()
+            A_2, S_2 = model2(data_2, torch.from_numpy(W_2).to(device))
+            loss = model2.loss(A_2, S_2)
+            loss.backward()
+            opt.step()
+
+        # fusing subgraph and original graph
+        S_2 = S_2.detach().cpu()
+        S_2 = torch.argmax(S_2, dim=-1)
+        S[sec_index] = S_2 + 3
+
+        mask2, S = utils.graph_to_mask(S, cc, stride, P, image_tensor, image)
+
+        if mode == 1:
+            utils.save_or_show(
+                [image, mask2, utils.apply_seg_map(image, mask2, 0.7)],
+                imgpath.stem + filename_append,
+                out_dir,
+                save,
+            )
+            return
+
+        ##########################################################################################
+        # Second pass on background
+        ##########################################################################################
+        sec_index = np.nonzero(S == 0).squeeze(1)
+        F_3 = F[sec_index]
+        W_3 = utils.create_adj(F_3, cut, alpha)
+
+        node_feats, edge_index, edge_weight = utils.load_data(W_3, F_3)
+        data_3 = Data(node_feats, edge_index, edge_weight).to(device)
+
+        # GNN Pass
+        model3.load_state_dict(
+            torch.load("./model3.pt", map_location=torch.device(device))
+        )
+
+        opt = optim.AdamW(model3.parameters(), lr=0.001)
+        for _ in range(epochs[2]):
+            opt.zero_grad()
+            A_3, S_3 = model3(data_3, torch.from_numpy(W_3).to(device))
+            loss = model3.loss(A_3, S_3)
+            loss.backward()
+            opt.step()
+
+        # Fusing
+        S_3 = S_3.detach().cpu()
+        S_3 = torch.argmax(S_3, dim=-1)
+        S[sec_index] = S_3 + foreground_k + 5
+
+        mask3, S = utils.graph_to_mask(S, cc, stride, P, image_tensor, image)
+        if bs:
+            mask_foreground = mask0
+            mask_background = np.where(mask3 != foreground_k + 5, 0, 1)
+            bs_foreground = bilateral_solver_output(image, mask_foreground)[1]
+            bs_background = bilateral_solver_output(image, mask_background)[1]
+            mask3 = bs_foreground + (bs_background * 2)
+
         utils.save_or_show(
-            [image, mask0, utils.apply_seg_map(image, mask0, 0.7)],
-            imgpath.stem + append,
+            [image, mask3, utils.apply_seg_map(image, mask3, 0.7)],
+            imgpath.stem + filename_append,
             out_dir,
             save,
         )
-        return
-
-    ##########################################################################################
-    # Second pass on foreground
-    ##########################################################################################
-    sec_index = np.nonzero(S).squeeze(1)
-    F_2 = F[sec_index]
-    W_2 = utils.create_adj(F_2, cut, alpha)
-
-    # Data to pytorch_geometric format
-    node_feats, edge_index, edge_weight = utils.load_data(W_2, F_2)
-    data_2 = Data(node_feats, edge_index, edge_weight).to(device)
-
-    # GNN Pass
-    model2.load_state_dict(torch.load("./model2.pt", map_location=torch.device(device)))
-
-    opt = optim.AdamW(model2.parameters(), lr=0.001)
-    for _ in range(epochs[1]):
-        opt.zero_grad()
-        A_2, S_2 = model2(data_2, torch.from_numpy(W_2).to(device))
-        loss = model2.loss(A_2, S_2)
-        loss.backward()
-        opt.step()
-
-    # fusing subgraph and original graph
-    S_2 = S_2.detach().cpu()
-    S_2 = torch.argmax(S_2, dim=-1)
-    S[sec_index] = S_2 + 3
-
-    mask2, S = utils.graph_to_mask(S, cc, stride, P, image_tensor, image)
-
-    if mode == 1:
-        utils.save_or_show(
-            [image, mask2, utils.apply_seg_map(image, mask2, 0.7)],
-            imgpath.stem + append,
-            out_dir,
-            save,
-        )
-        return
-
-    ##########################################################################################
-    # Second pass on background
-    ##########################################################################################
-    sec_index = np.nonzero(S == 0).squeeze(1)
-    F_3 = F[sec_index]
-    W_3 = utils.create_adj(F_3, cut, alpha)
-
-    node_feats, edge_index, edge_weight = utils.load_data(W_3, F_3)
-    data_3 = Data(node_feats, edge_index, edge_weight).to(device)
-
-    # GNN Pass
-    model3.load_state_dict(torch.load("./model3.pt", map_location=torch.device(device)))
-
-    opt = optim.AdamW(model3.parameters(), lr=0.001)
-    for _ in range(epochs[2]):
-        opt.zero_grad()
-        A_3, S_3 = model3(data_3, torch.from_numpy(W_3).to(device))
-        loss = model3.loss(A_3, S_3)
-        loss.backward()
-        opt.step()
-
-    # Fusing
-    S_3 = S_3.detach().cpu()
-    S_3 = torch.argmax(S_3, dim=-1)
-    S[sec_index] = S_3 + foreground_k + 5
-
-    mask3, S = utils.graph_to_mask(S, cc, stride, P, image_tensor, image)
-    if bs:
-        mask_foreground = mask0
-        mask_background = np.where(mask3 != foreground_k + 5, 0, 1)
-        bs_foreground = bilateral_solver_output(image, mask_foreground)[1]
-        bs_background = bilateral_solver_output(image, mask_background)[1]
-        mask3 = bs_foreground + (bs_background * 2)
-
-    utils.save_or_show(
-        [image, mask3, utils.apply_seg_map(image, mask3, 0.7)],
-        imgpath.stem + append,
-        out_dir,
-        save,
-    )
 
 
 def process_config(confpath):
@@ -457,8 +489,8 @@ def process_config(confpath):
 
     # Loading
     with open(confpath) as f:
-        config = yaml.safe_load(f)
-    config = defaultdict(None, config)
+        raw = yaml.safe_load(f)
+    config = defaultdict(None, raw)
 
     # Processing
     config["device"] = config["device"] if torch.cuda.is_available() else "cpu"
@@ -473,7 +505,7 @@ def process_config(confpath):
 
     config["pretrained_weights"] = pathlib.Path(config["pretrained_weights"])
 
-    # If Directory doesn't exist than download
+    # Check if model, download if not
     model_folder = pathlib.Path(config["pretrained_weights"].parents[0])
     model_folder.mkdir(parents=True, exist_ok=True)
 
@@ -481,11 +513,11 @@ def process_config(confpath):
         url = "https://dl.fbaipublicfiles.com/dino/dino_deitsmall8_pretrain/dino_deitsmall8_pretrain_full_checkpoint.pth"
         utils.download_url(url, config["pretrained_weights"])
 
-    # Make paths
+    # Set input and output directories
     config["in_dir"] = pathlib.Path(config["in_dir"])
     config["out_dir"] = pathlib.Path(config["out_dir"])
 
-    return config
+    return config, raw
 
 
 if __name__ == "__main__":
@@ -504,15 +536,35 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    config = process_config(args.confpath)
+    config, raw_config = process_config(args.confpath)
 
     if args.filepath:
+        if config["save"]:
+            # Create specific output dir
+            filepath = pathlib.Path(args.filepath)
+            config["out_dir"] = config["out_dir"] / filepath.stem
+            config["out_dir"].mkdir(parents=True, exist_ok=True)
+
+            # Save raw config file
+            with open(config["out_dir"] / "config.yml", "w") as f:
+                yaml.dump(raw_config, f, sort_keys=False)
+
+        # Run
         imgpath = pathlib.Path(args.filepath)
         GNN_seg_image(**config, imgpath=imgpath)
+
     elif args.experiment:
+        if config["save"]:
+            # Create output dir
+            config["out_dir"].mkdir(parents=True, exist_ok=True)
+
+            # Save raw config file
+            with open(config["out_dir"] / "config.yml", "w") as f:
+                yaml.dump(raw_config, f, sort_keys=False)
+
         for layer in [1, 11]:
             config["layer"] = layer
             for facet in ["query", "key", "value", "token", "attn"]:
                 config["facet"] = facet
-                append = f"L{layer}_{facet}"
-                GNN_seg_dataset(**config, append=append)
+                filename_append = f"L{layer}_{facet}"
+                GNN_seg_dataset(**config, filename_append=filename_append)
