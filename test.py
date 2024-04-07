@@ -1,6 +1,14 @@
 from pathlib import Path
+from tqdm import tqdm
 import numpy as np
 import torch
 
-adj = np.random.rand(3, 2, 2)
-print(adj.reshape(-1, 3).shape)
+
+in_dir = Path("./input_images/deepglobe/custom/images/")
+
+for item in tqdm(
+    list(in_dir.glob("*.jpg"))
+    + list(in_dir.glob("*.png"))
+    + list(in_dir.glob("*.jpeg"))
+):
+    print(item)
