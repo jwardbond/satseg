@@ -10,7 +10,7 @@ in_dir: "./deepglobe_custom_input/images/"
 out_dir: "./results/deepglobe_vanilla"
 save: True
 # ViT settings
-pretrained_weights: "./models/vit_mc_checkpoint300"
+pretrained_weights: "./models/dino_deitsmall8_pretrain_full_checkpoint"
 res: [280,280]                # resolution
 stride: 4                 # stride for extraction
 layer: 11                 # ViT layer for extraction

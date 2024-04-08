@@ -520,9 +520,17 @@ def process_config(confpath):
     model_folder.mkdir(parents=True, exist_ok=True)
 
     if not config["pretrained_weights"].exists():
-        url = "https://dl.fbaipublicfiles.com/dino/dino_deitsmall8_pretrain/dino_deitsmall8_pretrain_full_checkpoint.pth"
-        utils.download_url(url, config["pretrained_weights"])
-
+        if "dino_deitsmall8" in config["pretrained_weights"].stem:
+            url = "https://dl.fbaipublicfiles.com/dino/dino_deitsmall8_pretrain/dino_deitsmall8_pretrain_full_checkpoint.pth"
+            utils.download_url(url, config["pretrained_weights"])
+        elif "vit_mc" in config["pretrained_weights"].stem:
+            print(
+                "Please download the model from https://github.com/WennyXY/DINO-MC?tab=readme-ov-file"
+            )
+            exit(1)
+        else:
+            print(f"Model not found at {config['pretrained_weights']}")
+            exit(1)
     # Set input and output directories
     config["in_dir"] = pathlib.Path(config["in_dir"])
     config["out_dir"] = pathlib.Path(config["out_dir"])
