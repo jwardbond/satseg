@@ -566,7 +566,7 @@ if __name__ == "__main__":
     elif args.experiment:
         if config["save"]:
             # Create specific output dir
-            config["out_dir"] = config["out_dir"]
+            config["out_dir"] = config["out_dir"].mkdir(parents=True, exist_ok=True)
 
             # Save raw config file
             with open(config["out_dir"] / "config.yml", "w") as f:
