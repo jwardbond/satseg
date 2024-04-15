@@ -423,3 +423,24 @@ class ViTExtractor:
         else:
             desc = self._log_bin(x)
         return desc
+
+    def extract_saliency_maps(
+        self, batch: torch.Tensor, head_idxs: list[int] = [0, 2, 4, 5]
+    ) -> torch.Tensor:
+        """
+        extract saliency maps. The saliency maps are extracted by averaging several attention heads from the last layer
+        in of the CLS token. All values are then normalized to range between 0 and 1.
+        :param batch: batch to extract saliency maps for. Has shape BxCxHxW.
+        :return: a tensor of saliency maps. has shape BxN-1
+        """
+        assert (
+            self.model_type == "dino_vits8"
+        ), "saliency maps are supported only for dino_vits model_type."
+        self._extract_features(batch, [11], "attn")
+        curr_feats = self._feats[0]  # BxhxNxN
+        cls_attn_map = curr_feats[:, head_idxs, 0, 1:].mean(dim=1)  # Bx(N-1)
+        temp_mins, temp_maxs = cls_attn_map.min(dim=1)[0], cls_attn_map.max(dim=1)[0]
+        cls_attn_maps = (cls_attn_map - temp_mins) / (
+            temp_maxs - temp_mins
+        )  # normalize to range [0,1]
+        return cls_attn_maps
