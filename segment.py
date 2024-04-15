@@ -14,6 +14,8 @@ from satseg.bilateral_solver import bilateral_solver_output
 from satseg.extractor import ViTExtractor
 from satseg.features_extract import deep_features
 
+pathlib.PosixPath = pathlib.WindowsPath
+
 ##########################################################################################
 # Adapted from https://github.com/SAMPL-Weizmann/DeepCut
 
