@@ -154,7 +154,6 @@ def im_show_n(im_arr: list, n: int, title: str):
     fig.canvas.manager.set_window_title(title)
     fig.suptitle(title)
     plt.show()
-    # plt.savefig('./try.png')
 
 
 @njit()

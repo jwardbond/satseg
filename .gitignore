@@ -8,7 +8,6 @@ results/*
 input_images/*
 notebooks/
 
-experiments.py
 test.py
 
 ##### DEFAULTS #####

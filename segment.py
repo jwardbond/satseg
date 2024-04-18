@@ -55,10 +55,6 @@ def GNN_seg_image(
 ):
     """Segment images in a dataset using ViT+GNN methodology
 
-    Get bounding box (k==2 only) or segmentation maps bounding boxes
-    will be in the following format: class, confidence, left, top , right, bottom
-    (class and confidence not in use for now, set as '1')
-
     Args:
         mode: mode to run the segmentation in: normal==0, 2-stage on foreground == 1, 2-stage on fore+background == 2
         device: Device to use ('cuda'/'cpu')
@@ -274,10 +270,6 @@ def GNN_seg_dataset(
     **kwargs,
 ):
     """Segment images in a dataset using ViT+GNN methodology
-
-    Get bounding box (k==2 only) or segmentation maps bounding boxes
-    will be in the following format: class, confidence, left, top , right, bottom
-    (class and confidence not in use for now, set as '1')
 
     Args:
         mode: mode to run the segmentation in: normal==0, 2-stage on foreground == 1, 2-stage on fore+background == 2
