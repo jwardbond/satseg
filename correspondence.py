@@ -15,7 +15,7 @@ from satseg.features_extract import deep_features
 
 pathlib.PosixPath = pathlib.WindowsPath
 ##########################################################################################
-# Adapted from https://github.com/SAMPL-Weizmann/DeepCut
+# Written by jwardbond
 
 # Note that for all code herein, the following convention is used:
 #   D is size of deep feature vector
@@ -69,75 +69,87 @@ def get_correspondence_map(
     ##########################################################################################
     # Process
     ##########################################################################################
-    source_F = deep_features(source_tensor, extractor, layer, facet, device=device)
-    target_F = deep_features(target_tensor, extractor, layer, facet, device=device)
+    for facet in ["key", "value", "query", "token"]:
+        for layer in [0, 1, 11]:
+            source_F = deep_features(
+                source_tensor, extractor, layer, facet, device=device
+            )
+            target_F = deep_features(
+                target_tensor, extractor, layer, facet, device=device
+            )
 
-    output = np.dot(target_F, source_F[source_patch].T)  # NxD x Dx1
+            output = np.dot(target_F, source_F[source_patch].T)  # NxD x Dx1
 
-    # Reshape to HxW (in patches)
-    P = extractor.model.patch_embed.patch_size
-    output = np.reshape(
-        output,
-        (
-            int(1 + (target_tensor.shape[2] - P) // stride),  # height in # patches
-            int(1 + (target_tensor.shape[3] - P) // stride),  # width in # patches
-        ),
-    )
+            # Reshape to HxW (in patches)
+            P = extractor.model.patch_embed.patch_size
+            output = np.reshape(
+                output,
+                (
+                    int(
+                        1 + (target_tensor.shape[2] - P) // stride
+                    ),  # height in # patches
+                    int(
+                        1 + (target_tensor.shape[3] - P) // stride
+                    ),  # width in # patches
+                ),
+            )
 
-    ##########################################################################################
-    # Visualize
-    ##########################################################################################
-    # Get coordinates of patch in original image
-    original_shape = (source.shape[0], source.shape[1])
-    scaled_shape = (
-        int(1 + (target_tensor.shape[2] - P) // stride),
-        int(1 + (target_tensor.shape[3] - P) // stride),
-    )  # Image as patches
+            ##########################################################################################
+            # Visualize
+            ##########################################################################################
+            # Get coordinates of patch in original image
+            original_shape = (source.shape[0], source.shape[1])
+            scaled_shape = (
+                int(1 + (target_tensor.shape[2] - P) // stride),
+                int(1 + (target_tensor.shape[3] - P) // stride),
+            )  # Image as patches
 
-    patch_coords = np.unravel_index(source_patch, scaled_shape)
-    scale = np.divide(original_shape, scaled_shape)
-    scaled_coords = np.multiply(patch_coords, scale)
+            patch_coords = np.unravel_index(source_patch, scaled_shape)
+            scale = np.divide(original_shape, scaled_shape)
+            scaled_coords = np.multiply(patch_coords, scale)
 
-    # Save or show
-    if save:
-        # Source image + annotation
-        annulus = patches.Annulus(
-            (scaled_coords[1], scaled_coords[0]), r=120, width=30, color="r"
-        )
-        plt.imshow(source, cmap="magma")
-        ax = plt.gca()
-        ax.add_patch(annulus)
-        ax.set_axis_off()
-        plt.savefig(out_dir / "source.png", dpi=200, bbox_inches="tight", pad_inches=0)
-        plt.close()
+            # Save or show
+            if save:
+                # Source image + annotation
+                annulus = patches.Annulus(
+                    (scaled_coords[1], scaled_coords[0]), r=120, width=30, color="r"
+                )
+                plt.imshow(source, cmap="magma")
+                ax = plt.gca()
+                ax.add_patch(annulus)
+                ax.set_axis_off()
+                plt.savefig(
+                    out_dir / "source.png", dpi=200, bbox_inches="tight", pad_inches=0
+                )
+                plt.close()
 
-        # Target image
-        plt.imsave(
-            out_dir / "target.png",
-            dpi=200,
-            arr=target,
-        )
+                # Target image
+                plt.imsave(
+                    out_dir / "target.png",
+                    dpi=200,
+                    arr=target,
+                )
 
-        # Heat map
-        output = cv2.resize(
-            output.astype("float"),
-            (target[:, :, 0].shape[1], target[:, :, 0].shape[0]),
-            interpolation=cv2.INTER_NEAREST,
-        )
-        plt.imsave(
-            out_dir / f"output_{facet}{layer}.png",
-            dpi=200,
-            arr=output,
-            cmap="magma",
-        )
+                # Heat map
+                output = cv2.resize(
+                    output.astype("float"),
+                    (target[:, :, 0].shape[1], target[:, :, 0].shape[0]),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+                plt.imsave(
+                    out_dir / f"output_{pretrained_weights.stem}_{facet}{layer}.png",
+                    dpi=200,
+                    arr=output,
+                    cmap="magma",
+                )
 
-    else:
-        correspondence_plot(
-            [source, target, output],
-            "Source, Target, Correspondence",
-            patch_coords,
-            scaled_coords,
-        )
+            else:
+                correspondence_plot(
+                    [source, target, output],
+                    "Source, Target, Correspondence",
+                    patch_coords,
+                    scaled_coords,
+                )
 
 
 def correspondence_plot(

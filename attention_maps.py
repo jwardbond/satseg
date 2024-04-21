@@ -14,7 +14,7 @@ from satseg.features_extract import deep_features
 
 pathlib.PosixPath = pathlib.WindowsPath
 ##########################################################################################
-# Adapted from https://github.com/SAMPL-Weizmann/DeepCut
+# Written by jwardbond
 
 # Note that for all code herein, the following convention is used:
 #   D is size of deep feature vector
@@ -30,7 +30,7 @@ pathlib.PosixPath = pathlib.WindowsPath
 ##########################################################################################
 
 
-def get_saliency_map(
+def mean_attention(
     device: str,
     out_dir: pathlib.PurePath,
     save: bool,
@@ -106,21 +106,18 @@ def get_saliency_map(
         plt.show()
 
 
-def patch_similarity(
+def composite_attention(
     device: str,
     out_dir: pathlib.PurePath,
     save: bool,
     pretrained_weights: pathlib.PurePath,
     res: tuple[int, int],
-    layer: int,
-    facet: str,
     stride: int,
-    source_image: pathlib.PurePath,
-    target_image: pathlib.PurePath,
-    source_patch: int,
+    imgpath: pathlib.PurePath,
+    threshold,
     **kwargs,
 ):
-    """Computes cosine similarity between two images using source patches key/query/value/output token
+    """Generates a saliency map for an image using attention between [CLS] and all other patches
 
     Args:
         device: Device to use ('cuda'/'cpu')
@@ -129,7 +126,13 @@ def patch_similarity(
         pretrained_weights: Path to pretrained ViT
         res: Resolution of image
         stride: Stride for feature extraction
+        imgpath: Path to input image
+        threshold: alpha threshold to color a pixel, none or [0,1]. If specified, all pixels above threshold have alpha=1
     """
+
+    # Set up tmp directory
+    tmp_dir = pathlib.Path("./.tmp")
+    tmp_dir.mkdir(parents=True, exist_ok=True)
 
     ##########################################################################################
     # Init
@@ -138,44 +141,94 @@ def patch_similarity(
         "dino_vits8", stride, model_dir=pretrained_weights, device=device
     )
 
-    source_tensor, source = utils.load_data_img(source_image, res)
-    target_tensor, target = utils.load_data_img(target_image, res)
+    source_tensor, source = utils.load_data_img(imgpath, res)
 
-    ##########################################################################################
-    # Process
-    ##########################################################################################
-    source_F = deep_features(source_tensor, extractor, layer, facet, device=device)
-    target_F = deep_features(target_tensor, extractor, layer, facet, device=device)
+    ################################################################################################
+    # Extract saliency
+    ################################################################################################
+    colors = [
+        np.array([1, 0, 0]),  # Red
+        np.array([0, 1, 0]),  # Green
+        np.array([0, 0, 1]),  # Blue
+        np.array([0, 1, 1]),  # Cyan
+        np.array([1, 0, 1]),  # Magenta
+        np.array([1, 1, 0]),  # Yellow
+        np.array([1, 1, 1]),  # White
+        np.array([0, 0, 0]),  # Black
+    ]
 
-    output = np.dot(target_F, source_F[source_patch].T)  # NxD x Dx1
+    for i, head in enumerate([0, 1, 2, 3, 4, 5]):
+        saliency = extractor.extract_saliency_maps(
+            source_tensor.to(device), head_idxs=[head]
+        )
+        saliency = saliency.detach().cpu()
+        saliency = saliency.numpy().transpose()
 
-    # Reshape to HxW (in patches)
+        color_arr = np.tile(colors[head], (len(saliency), 1))
+        conc = np.concatenate((saliency, color_arr), axis=1)
+        if i == 0:
+            output = conc
+        else:
+            bl = conc[:, 0] > output[:, 0]
+            t = np.where(bl[:, np.newaxis], conc, output)
+            output = t
+
+    if threshold:
+        bl = output[:, 0] >= threshold
+        zeros = np.zeros(output.shape)
+        t = np.where(bl[:, np.newaxis], output, zeros)
+        output = t[:, [1, 2, 3]]  # permute to RGB
+    else:
+        output = output[:, [1, 2, 3, 0]]  # permute to RGBA
+
+    ################################################################################################
+    # Output
+    ################################################################################################
+
+    # Reshape
     P = extractor.model.patch_embed.patch_size
+
     output = np.reshape(
         output,
         (
-            int(1 + (target_tensor.shape[2] - P) // stride),  # height in # patches
-            int(1 + (target_tensor.shape[3] - P) // stride),  # width in # patches
+            int(1 + (source_tensor.shape[2] - P) // stride),  # height in # patches
+            int(1 + (source_tensor.shape[3] - P) // stride),  # width
+            output.shape[1],  # channels
         ),
-    )
+    )  # HxWxC in patches, where C is RGB(A)
 
     img = cv2.resize(
         output.astype("float"),
-        (target[:, :, 0].shape[1], target[:, :, 0].shape[0]),
+        (source[:, :, 0].shape[1], source[:, :, 0].shape[0]),
         interpolation=cv2.INTER_NEAREST,
     )
 
     # Save or show
     if save:
+        # Source image
         plt.imsave(
-            out_dir / (imgpath.stem + f"{pretrained_weights.stem}_saliency" + ".png"),
+            out_dir / "source.png",
             dpi=200,
-            arr=[source, img],
+            arr=source,
         )
-    else:
-        utils.im_show_n([source, img], 2, "Source, Target")
+
+        # Ouput map
         plt.imshow(img)
-        plt.show()
+        ax = plt.gca()
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        ax.tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
+        ax.set_facecolor("black")
+        plt.savefig(
+            out_dir / (imgpath.stem + f"_{pretrained_weights.stem}" + ".png"),
+            dpi=200,
+            bbox_inches="tight",
+            pad_inches=0,
+        )
+        plt.close()
+
+    else:
+        utils.im_show_n([source, img], 2, "attention map")
 
 
 def process_config(confpath):
@@ -225,10 +278,17 @@ def process_config(confpath):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="saliency",
-        description="Generates a saliency map according to https://dino-vit-features.github.io/paper.pdf",
+        description="Generates a saliency maps according to https://dino-vit-features.github.io/paper.pdf",
     )
     parser.add_argument("confpath")
     parser.add_argument("filepath", help="Path to input image")
+    parser.add_argument("-c", "--composite", action="store_true", help="separate heads")
+    parser.add_argument(
+        "-t",
+        "--threshold",
+        default=False,
+        help="alpha threshold for composite images",
+    )
 
     args = parser.parse_args()
     config, raw_config = process_config(args.confpath)
@@ -245,4 +305,13 @@ if __name__ == "__main__":
 
     # Run
     imgpath = pathlib.Path(args.filepath)
-    get_saliency_map(**config, imgpath=imgpath)
+    if args.composite:
+        if args.threshold:
+            print(f"running with threshold {args.threshold}")
+            composite_attention(
+                **config, imgpath=imgpath, threshold=float(args.threshold)
+            )
+        else:
+            composite_attention(**config, imgpath=imgpath, threshold=None)
+    else:
+        mean_attention(**config, imgpath=imgpath)

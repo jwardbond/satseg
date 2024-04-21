@@ -124,7 +124,7 @@ class ViTExtractor:
         """
         Creates a method for position encoding interpolation.
         :param patch_size: patch size of the model.
-        :param stride_hw: A tuple containing the new height and width stride respectively.
+        :param stride_hw: A tuple containing the new hei ht and width stride respectively.
         :return: the interpolation method
         """
 
@@ -431,7 +431,7 @@ class ViTExtractor:
         extract saliency maps. The saliency maps are extracted by averaging several attention heads from the last layer
         in of the CLS token. All values are then normalized to range between 0 and 1.
         :param batch: batch to extract saliency maps for. Has shape BxCxHxW.
-        :return: a tensor of saliency maps. has shape BxN-1
+        :return: a tensor of saliency maps. has shape BxN
         """
         assert (
             self.model_type == "dino_vits8"
