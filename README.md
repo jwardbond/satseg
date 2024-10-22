@@ -1,7 +1,7 @@
 # satseg
 For MIE1520 at UofT
 
-90% of the code in here is from:
+Much of the code in here has been borrowed/adapted from:
 - https://sampl-weizmann.github.io/DeepCut/
 - https://github.com/ShirAmir/dino-vit-features
 - https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/vision_transformer.py 
